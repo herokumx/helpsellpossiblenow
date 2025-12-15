@@ -71,6 +71,30 @@
 
       .msg { margin-top: 10px; font-size: 13px; color: var(--muted); }
 
+      .modalOverlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(17, 24, 39, 0.45);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        z-index: 9999;
+      }
+      .modalOverlay.show { display: flex; }
+      .modal {
+        width: 100%;
+        max-width: 440px;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: var(--shadow);
+        padding: 16px;
+      }
+      .modal h4 { margin: 0 0 6px 0; font-size: 16px; }
+      .modal p { margin: 0 0 12px 0; color: var(--muted); }
+      .modal .actions { justify-content: flex-end; }
+
       .chipbox {
         display: flex;
         flex-wrap: wrap;
@@ -232,6 +256,16 @@
       </div>
     </div>
 
+    <div class="modalOverlay" id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalBody">
+      <div class="modal">
+        <h4 id="modalTitle">Meeting created</h4>
+        <p id="modalBody">Your meeting has been saved and is visible to both teams.</p>
+        <div class="actions">
+          <button class="primary" id="modalOkBtn">OK</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       function esc(s) {
         return (s || "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
@@ -338,6 +372,27 @@
         input.value = "";
       }
 
+      // --- Modal popup ---
+      let modalTimer = null;
+      function hideModal() {
+        const overlay = document.getElementById("modalOverlay");
+        overlay.classList.remove("show");
+        if (modalTimer) {
+          clearTimeout(modalTimer);
+          modalTimer = null;
+        }
+      }
+
+      function showModal(title, body, autoCloseMs = 5000) {
+        const overlay = document.getElementById("modalOverlay");
+        document.getElementById("modalTitle").textContent = title;
+        document.getElementById("modalBody").textContent = body;
+        overlay.classList.add("show");
+        document.getElementById("modalOkBtn").focus();
+        if (modalTimer) clearTimeout(modalTimer);
+        modalTimer = setTimeout(() => hideModal(), autoCloseMs);
+      }
+
       async function refresh() {
         const res = await fetch("/api/events");
         const events = await res.json();
@@ -386,6 +441,7 @@
           return;
         }
         msg.textContent = "Created.";
+        showModal("Meeting created", "Your meeting has been saved and is visible to both teams.", 5000);
         await refresh();
       }
 
@@ -425,6 +481,16 @@
       document.getElementById("guestInput").addEventListener("paste", (e) => {
         // If they paste multiple, commit right away
         requestAnimationFrame(() => commitGuestInput());
+      });
+
+      // initialize modal
+      document.getElementById("modalOkBtn").addEventListener("click", hideModal);
+      document.getElementById("modalOverlay").addEventListener("click", (e) => {
+        // click outside closes as well
+        if (e.target.id === "modalOverlay") hideModal();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") hideModal();
       });
 
       refresh();
