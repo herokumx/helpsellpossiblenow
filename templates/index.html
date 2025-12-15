@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Calendar Events</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+      .row { display: flex; gap: 16px; flex-wrap: wrap; }
+      input, textarea, select { width: 320px; padding: 8px; }
+      textarea { height: 90px; }
+      button { padding: 10px 14px; cursor: pointer; }
+      table { border-collapse: collapse; width: 100%; margin-top: 18px; }
+      td, th { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+      th { background: #f6f6f6; text-align: left; }
+      code { white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h2>Calendar Events</h2>
+    <p>This is a minimal UI over the API. Create events and list what's in Postgres.</p>
+
+    <div class="row">
+      <div>
+        <h3>Create</h3>
+        <div><label>Title<br /><input id="title" placeholder="Team sync" /></label></div>
+        <div><label>Start (ISO)<br /><input id="start_at" placeholder="2025-12-15T10:00:00-05:00" /></label></div>
+        <div><label>End (ISO)<br /><input id="end_at" placeholder="2025-12-15T10:30:00-05:00" /></label></div>
+        <div><label>All day<br />
+          <select id="is_all_day">
+            <option value="false">false</option>
+            <option value="true">true</option>
+          </select></label>
+        </div>
+        <div><label>Location<br /><input id="location" placeholder="Conf Room A" /></label></div>
+        <div><label>Description<br /><textarea id="description" placeholder="Agenda..."></textarea></label></div>
+        <div style="margin-top: 10px;">
+          <button id="createBtn">Create event</button>
+          <button id="refreshBtn">Refresh list</button>
+        </div>
+        <div id="msg" style="margin-top: 10px;"></div>
+      </div>
+    </div>
+
+    <h3>Events</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Title</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody id="eventsBody"></tbody>
+    </table>
+
+    <script>
+      function esc(s) {
+        return (s || "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+      }
+
+      async function refresh() {
+        const res = await fetch("/api/events");
+        const events = await res.json();
+        const body = document.getElementById("eventsBody");
+        body.innerHTML = events.map(e => {
+          const when = `${e.start_at || ""} → ${e.end_at || ""}`.trim();
+          return `<tr>
+            <td>${esc(when)}</td>
+            <td>${esc(e.title)}</td>
+            <td><code>${esc(JSON.stringify(e, null, 2))}</code></td>
+          </tr>`;
+        }).join("");
+      }
+
+      async function create() {
+        const payload = {
+          title: document.getElementById("title").value || null,
+          start_at: document.getElementById("start_at").value || null,
+          end_at: document.getElementById("end_at").value || null,
+          is_all_day: document.getElementById("is_all_day").value === "true",
+          location: document.getElementById("location").value || null,
+          description: document.getElementById("description").value || null,
+        };
+        const res = await fetch("/api/events", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const msg = document.getElementById("msg");
+        if (!res.ok) {
+          msg.textContent = "Create failed: " + (await res.text());
+          return;
+        }
+        msg.textContent = "Created.";
+        await refresh();
+      }
+
+      document.getElementById("createBtn").addEventListener("click", create);
+      document.getElementById("refreshBtn").addEventListener("click", refresh);
+      refresh();
+    </script>
+  </body>
+</html>
+
+
