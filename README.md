@@ -25,7 +25,7 @@ Set environment variables:
 ```bash
 export FLASK_ENV=development
 export SECRET_KEY="dev-only"
-export DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DBNAME"
+export DATABASE_URL="postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME"
 ```
 
 Run migrations and start the server:

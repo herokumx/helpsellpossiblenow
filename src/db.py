@@ -6,9 +6,24 @@ from sqlalchemy.orm import sessionmaker
 
 
 def _normalize_database_url(url: str) -> str:
-    # Heroku commonly provides postgres:// which SQLAlchemy expects as postgresql://
+    """
+    Normalize DATABASE_URL for SQLAlchemy.
+
+    - Heroku commonly provides postgres://
+    - SQLAlchemy's default postgresql:// dialect maps to psycopg2 unless specified
+    - This app uses psycopg v3, so we force postgresql+psycopg:// when no driver is specified
+    """
     if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql://", 1)
+        url = url.replace("postgres://", "postgresql://", 1)
+
+    # If caller already specified a driver (postgresql+psycopg://, postgresql+psycopg2://, etc.), keep it.
+    if url.startswith("postgresql+"):
+        return url
+
+    # Force psycopg v3 driver
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+
     return url
 
 
