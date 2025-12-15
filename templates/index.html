@@ -3,60 +3,212 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Calendar Events</title>
+    <title>PossibleNow Meetings</title>
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
-      .row { display: flex; gap: 16px; flex-wrap: wrap; }
-      input, textarea, select { width: 320px; padding: 8px; }
-      textarea { height: 90px; }
-      button { padding: 10px 14px; cursor: pointer; }
-      table { border-collapse: collapse; width: 100%; margin-top: 18px; }
-      td, th { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
-      th { background: #f6f6f6; text-align: left; }
-      code { white-space: pre-wrap; }
+      :root {
+        --bg: #ffffff;
+        --card: #ffffff;
+        --text: #111827;
+        --muted: #6b7280;
+        --border: #e5e7eb;
+        --shadow: 0 1px 2px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.06);
+        --primary: #2563eb;
+      }
+
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        margin: 0;
+        background: #f9fafb;
+        color: var(--text);
+      }
+
+      .container { max-width: 1080px; margin: 28px auto; padding: 0 16px; }
+      .header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+      .header h2 { margin: 0; font-size: 24px; }
+      .header p { margin: 0; color: var(--muted); }
+
+      .grid { display: grid; grid-template-columns: 420px 1fr; gap: 16px; align-items: start; }
+      @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        padding: 16px;
+      }
+
+      .card h3 { margin: 0 0 12px 0; font-size: 16px; }
+
+      .field { margin-bottom: 12px; }
+      .label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+
+      input, textarea, select {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 14px;
+        background: #fff;
+      }
+      textarea { min-height: 96px; resize: vertical; }
+
+      .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+      .actions { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+      button {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-weight: 600;
+        cursor: pointer;
+        background: #fff;
+      }
+      button.primary { background: var(--primary); color: white; border-color: var(--primary); }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+      .msg { margin-top: 10px; font-size: 13px; color: var(--muted); }
+
+      table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+      td, th { border: 1px solid var(--border); padding: 10px; vertical-align: top; }
+      th { background: #f3f4f6; text-align: left; font-size: 12px; color: #374151; }
+      code { white-space: pre-wrap; font-size: 12px; }
     </style>
   </head>
   <body>
-    <h2>PossibleNow Meetings</h2>
-    <p>This calendar app allows both teams to create meetings that are visible to both companies</p>
+    <div class="container">
+      <div class="header">
+        <div>
+          <h2>PossibleNow Meetings</h2>
+          <p>This calendar app allows both teams to create meetings that are visible to both companies</p>
+        </div>
+        <div class="actions">
+          <button id="refreshBtn">Refresh</button>
+        </div>
+      </div>
 
-    <div class="row">
-      <div>
-        <h3>Create</h3>
-        <div><label>Title<br /><input id="title" placeholder="Team sync" /></label></div>
-        <div><label>Start (ISO)<br /><input id="start_at" placeholder="2025-12-15T10:00:00-05:00" /></label></div>
-        <div><label>End (ISO)<br /><input id="end_at" placeholder="2025-12-15T10:30:00-05:00" /></label></div>
-        <div><label>All day<br />
-          <select id="is_all_day">
-            <option value="false">false</option>
-            <option value="true">true</option>
-          </select></label>
+      <div class="grid">
+        <div class="card">
+          <h3>Create meeting</h3>
+
+          <div class="field">
+            <label class="label" for="title">Title</label>
+            <input id="title" placeholder="Team sync" autocomplete="off" />
+          </div>
+
+          <div class="field">
+            <div class="label">When</div>
+            <div class="row2">
+              <div>
+                <label class="label" for="start_date">Start date</label>
+                <input id="start_date" type="date" />
+              </div>
+              <div>
+                <label class="label" for="start_time">Start time</label>
+                <select id="start_time"></select>
+              </div>
+            </div>
+            <div class="row2" style="margin-top: 10px;">
+              <div>
+                <label class="label" for="end_date">End date</label>
+                <input id="end_date" type="date" />
+              </div>
+              <div>
+                <label class="label" for="end_time">End time</label>
+                <select id="end_time"></select>
+              </div>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="label" for="location">Location</label>
+            <input id="location" placeholder="Conference Room A" autocomplete="off" />
+          </div>
+
+          <div class="field">
+            <label class="label" for="guests">Guests</label>
+            <input id="guests" placeholder="alice@company.com, bob@company.com" autocomplete="off" />
+          </div>
+
+          <div class="field">
+            <label class="label" for="description">Description</label>
+            <textarea id="description" placeholder="Add agenda, notes, links..."></textarea>
+          </div>
+
+          <div class="actions">
+            <button class="primary" id="createBtn">Create</button>
+          </div>
+          <div id="msg" class="msg"></div>
         </div>
-        <div><label>Location<br /><input id="location" placeholder="Conf Room A" /></label></div>
-        <div><label>Description<br /><textarea id="description" placeholder="Agenda..."></textarea></label></div>
-        <div style="margin-top: 10px;">
-          <button id="createBtn">Create event</button>
-          <button id="refreshBtn">Refresh list</button>
+
+        <div class="card">
+          <h3>Events</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Title</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="eventsBody"></tbody>
+          </table>
         </div>
-        <div id="msg" style="margin-top: 10px;"></div>
       </div>
     </div>
-
-    <h3>Events</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>When</th>
-          <th>Title</th>
-          <th>Details</th>
-        </tr>
-      </thead>
-      <tbody id="eventsBody"></tbody>
-    </table>
 
     <script>
       function esc(s) {
         return (s || "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+      }
+
+      function pad2(n) { return String(n).padStart(2, "0"); }
+
+      function populateTimeSelect(selectEl) {
+        // 15-minute increments
+        selectEl.innerHTML = "";
+        for (let h = 0; h < 24; h++) {
+          for (let m = 0; m < 60; m += 15) {
+            const v = `${pad2(h)}:${pad2(m)}`;
+            const opt = document.createElement("option");
+            opt.value = v;
+            opt.textContent = v;
+            selectEl.appendChild(opt);
+          }
+        }
+      }
+
+      function setDefaultTimes() {
+        const now = new Date();
+        // Round up to next quarter hour
+        const minutes = now.getMinutes();
+        const rounded = new Date(now);
+        const add = (15 - (minutes % 15)) % 15;
+        rounded.setMinutes(minutes + add, 0, 0);
+        const end = new Date(rounded.getTime() + 30 * 60 * 1000);
+
+        const today = `${rounded.getFullYear()}-${pad2(rounded.getMonth() + 1)}-${pad2(rounded.getDate())}`;
+        const todayEnd = `${end.getFullYear()}-${pad2(end.getMonth() + 1)}-${pad2(end.getDate())}`;
+        document.getElementById("start_date").value = today;
+        document.getElementById("end_date").value = todayEnd;
+        document.getElementById("start_time").value = `${pad2(rounded.getHours())}:${pad2(rounded.getMinutes())}`;
+        document.getElementById("end_time").value = `${pad2(end.getHours())}:${pad2(end.getMinutes())}`;
+      }
+
+      function localDateTimeToIso(dateStr, timeStr) {
+        // dateStr: YYYY-MM-DD, timeStr: HH:MM
+        const [y, mo, d] = dateStr.split("-").map(Number);
+        const [h, mi] = timeStr.split(":").map(Number);
+        const dt = new Date(y, mo - 1, d, h, mi, 0, 0);
+        return dt.toISOString();
+      }
+
+      function parseGuests(s) {
+        const raw = (s || "").split(",").map(x => x.trim()).filter(Boolean);
+        if (!raw.length) return null;
+        return raw.map(email => ({ email, type: "required" }));
       }
 
       async function refresh() {
@@ -74,12 +226,24 @@
       }
 
       async function create() {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+
+        const startDate = document.getElementById("start_date").value;
+        const startTime = document.getElementById("start_time").value;
+        const endDate = document.getElementById("end_date").value;
+        const endTime = document.getElementById("end_time").value;
+
+        const startAt = startDate && startTime ? localDateTimeToIso(startDate, startTime) : null;
+        const endAt = endDate && endTime ? localDateTimeToIso(endDate, endTime) : null;
+
         const payload = {
           title: document.getElementById("title").value || null,
-          start_at: document.getElementById("start_at").value || null,
-          end_at: document.getElementById("end_at").value || null,
-          is_all_day: document.getElementById("is_all_day").value === "true",
+          start_at: startAt,
+          end_at: endAt,
+          start_timezone: tz,
+          end_timezone: tz,
           location: document.getElementById("location").value || null,
+          attendees: parseGuests(document.getElementById("guests").value),
           description: document.getElementById("description").value || null,
         };
         const res = await fetch("/api/events", {
@@ -98,6 +262,9 @@
 
       document.getElementById("createBtn").addEventListener("click", create);
       document.getElementById("refreshBtn").addEventListener("click", refresh);
+      populateTimeSelect(document.getElementById("start_time"));
+      populateTimeSelect(document.getElementById("end_time"));
+      setDefaultTimes();
       refresh();
     </script>
   </body>
