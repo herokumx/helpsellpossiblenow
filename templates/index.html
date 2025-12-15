@@ -71,6 +71,43 @@
 
       .msg { margin-top: 10px; font-size: 13px; color: var(--muted); }
 
+      .chipbox {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px 10px;
+        background: #fff;
+      }
+      .chipbox:focus-within { outline: 2px solid rgba(37, 99, 235, 0.25); outline-offset: 2px; }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: #f3f4f6;
+        font-size: 13px;
+      }
+      .chip button {
+        padding: 0;
+        border: none;
+        background: transparent;
+        font-weight: 800;
+        line-height: 1;
+      }
+      .chipinput {
+        border: none;
+        outline: none;
+        padding: 8px 6px;
+        min-width: 180px;
+        flex: 1;
+        font-size: 14px;
+      }
+
       table { border-collapse: collapse; width: 100%; margin-top: 12px; }
       td, th { border: 1px solid var(--border); padding: 10px; vertical-align: top; }
       th { background: #f3f4f6; text-align: left; font-size: 12px; color: #374151; }
@@ -123,13 +160,49 @@
           </div>
 
           <div class="field">
+            <div class="label">Time zone</div>
+            <div class="row2">
+              <div>
+                <label class="label" for="use_my_tz">Use my time zone</label>
+                <select id="use_my_tz">
+                  <option value="true">Yes (auto-detect)</option>
+                  <option value="false">No (choose)</option>
+                </select>
+              </div>
+              <div>
+                <label class="label" for="timezone">Selected time zone</label>
+                <input id="timezone" list="tzlist" placeholder="America/New_York" autocomplete="off" />
+                <datalist id="tzlist">
+                  <option value="America/Los_Angeles"></option>
+                  <option value="America/Denver"></option>
+                  <option value="America/Chicago"></option>
+                  <option value="America/New_York"></option>
+                  <option value="America/Phoenix"></option>
+                  <option value="Europe/London"></option>
+                  <option value="Europe/Paris"></option>
+                  <option value="Europe/Berlin"></option>
+                  <option value="Asia/Tokyo"></option>
+                  <option value="Asia/Singapore"></option>
+                  <option value="Australia/Sydney"></option>
+                  <option value="UTC"></option>
+                </datalist>
+              </div>
+            </div>
+            <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">
+              Tip: keep “Use my time zone” on unless you’re scheduling in another city.
+            </div>
+          </div>
+
+          <div class="field">
             <label class="label" for="location">Location</label>
             <input id="location" placeholder="Conference Room A" autocomplete="off" />
           </div>
 
           <div class="field">
             <label class="label" for="guests">Guests</label>
-            <input id="guests" placeholder="alice@company.com, bob@company.com" autocomplete="off" />
+            <div class="chipbox" id="guestBox">
+              <input id="guestInput" class="chipinput" placeholder="Type email and press Enter" autocomplete="off" />
+            </div>
           </div>
 
           <div class="field">
@@ -197,18 +270,72 @@
         document.getElementById("end_time").value = `${pad2(end.getHours())}:${pad2(end.getMinutes())}`;
       }
 
-      function localDateTimeToIso(dateStr, timeStr) {
-        // dateStr: YYYY-MM-DD, timeStr: HH:MM
-        const [y, mo, d] = dateStr.split("-").map(Number);
-        const [h, mi] = timeStr.split(":").map(Number);
-        const dt = new Date(y, mo - 1, d, h, mi, 0, 0);
-        return dt.toISOString();
+      function localDateTimeToLocalIso(dateStr, timeStr) {
+        // "Local" naive datetime string (no Z / offset). Backend will interpret with chosen IANA time zone.
+        // Example: 2025-12-15T10:00:00
+        return `${dateStr}T${timeStr}:00`;
       }
 
       function parseGuests(s) {
         const raw = (s || "").split(",").map(x => x.trim()).filter(Boolean);
         if (!raw.length) return null;
         return raw.map(email => ({ email, type: "required" }));
+      }
+
+      // --- Guests chip input (Google Calendar-like) ---
+      const guestState = { emails: [] };
+
+      function normalizeEmails(text) {
+        // Split on commas/semicolons/whitespace/newlines
+        return (text || "")
+          .split(/[\s,;]+/g)
+          .map(x => x.trim())
+          .filter(Boolean);
+      }
+
+      function isValidEmail(email) {
+        // Lightweight validation (good UX, not RFC-perfect)
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      }
+
+      function addGuest(email) {
+        const e = (email || "").trim();
+        if (!e) return;
+        if (!isValidEmail(e)) return;
+        if (guestState.emails.includes(e.toLowerCase())) return;
+        guestState.emails.push(e.toLowerCase());
+        renderGuests();
+      }
+
+      function removeGuest(emailLower) {
+        guestState.emails = guestState.emails.filter(x => x !== emailLower);
+        renderGuests();
+      }
+
+      function renderGuests() {
+        const box = document.getElementById("guestBox");
+        const input = document.getElementById("guestInput");
+        // remove existing chips (keep input)
+        Array.from(box.querySelectorAll(".chip")).forEach(n => n.remove());
+        guestState.emails.forEach(emailLower => {
+          const chip = document.createElement("span");
+          chip.className = "chip";
+          chip.innerHTML = `<span>${esc(emailLower)}</span>`;
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.setAttribute("aria-label", `Remove ${emailLower}`);
+          btn.textContent = "×";
+          btn.addEventListener("click", () => removeGuest(emailLower));
+          chip.appendChild(btn);
+          box.insertBefore(chip, input);
+        });
+      }
+
+      function commitGuestInput() {
+        const input = document.getElementById("guestInput");
+        const parts = normalizeEmails(input.value);
+        parts.forEach(addGuest);
+        input.value = "";
       }
 
       async function refresh() {
@@ -226,24 +353,26 @@
       }
 
       async function create() {
-        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+        const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+        const useMyTz = document.getElementById("use_my_tz").value === "true";
+        const tz = useMyTz ? detectedTz : (document.getElementById("timezone").value || null);
 
         const startDate = document.getElementById("start_date").value;
         const startTime = document.getElementById("start_time").value;
         const endDate = document.getElementById("end_date").value;
         const endTime = document.getElementById("end_time").value;
 
-        const startAt = startDate && startTime ? localDateTimeToIso(startDate, startTime) : null;
-        const endAt = endDate && endTime ? localDateTimeToIso(endDate, endTime) : null;
+        const startLocal = startDate && startTime ? localDateTimeToLocalIso(startDate, startTime) : null;
+        const endLocal = endDate && endTime ? localDateTimeToLocalIso(endDate, endTime) : null;
 
         const payload = {
           title: document.getElementById("title").value || null,
-          start_at: startAt,
-          end_at: endAt,
+          start_local: startLocal,
+          end_local: endLocal,
           start_timezone: tz,
           end_timezone: tz,
           location: document.getElementById("location").value || null,
-          attendees: parseGuests(document.getElementById("guests").value),
+          attendees: guestState.emails.length ? guestState.emails.map(email => ({ email, type: "required" })) : null,
           description: document.getElementById("description").value || null,
         };
         const res = await fetch("/api/events", {
@@ -265,6 +394,39 @@
       populateTimeSelect(document.getElementById("start_time"));
       populateTimeSelect(document.getElementById("end_time"));
       setDefaultTimes();
+      // initialize timezone UI
+      const detected = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      document.getElementById("timezone").value = detected;
+      document.getElementById("timezone").disabled = true;
+      document.getElementById("use_my_tz").addEventListener("change", (e) => {
+        const useMy = e.target.value === "true";
+        const tzInput = document.getElementById("timezone");
+        tzInput.disabled = useMy;
+        if (useMy) tzInput.value = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      });
+
+      // initialize guests UI
+      document.getElementById("guestBox").addEventListener("click", () => document.getElementById("guestInput").focus());
+      document.getElementById("guestInput").addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === ",") {
+          e.preventDefault();
+          commitGuestInput();
+          return;
+        }
+        if (e.key === "Backspace" && !e.target.value && guestState.emails.length) {
+          // Remove last chip like Google Calendar
+          removeGuest(guestState.emails[guestState.emails.length - 1]);
+        }
+      });
+      document.getElementById("guestInput").addEventListener("blur", () => {
+        // Commit on blur for paste workflows
+        commitGuestInput();
+      });
+      document.getElementById("guestInput").addEventListener("paste", (e) => {
+        // If they paste multiple, commit right away
+        requestAnimationFrame(() => commitGuestInput());
+      });
+
       refresh();
     </script>
   </body>

@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from zoneinfo import ZoneInfo
 
 
 class Base(DeclarativeBase):
@@ -211,6 +212,27 @@ class CalendarEvent(Base):
         ]:
             if key in payload:
                 setattr(self, key, payload[key])
+
+        # Convert local naive datetimes + IANA tz -> stored UTC timestamps.
+        # Payload should send start_local/end_local like "2025-12-15T10:00:00" and start_timezone like "America/New_York".
+        def _local_to_utc(local_iso: str, tz_name: str) -> datetime:
+            naive = datetime.fromisoformat(local_iso)
+            tz = ZoneInfo(tz_name)
+            aware = naive.replace(tzinfo=tz)
+            return aware.astimezone(ZoneInfo("UTC"))
+
+        if payload.get("start_local") and payload.get("start_timezone"):
+            try:
+                self.start_at = _local_to_utc(str(payload["start_local"]), str(payload["start_timezone"]))
+            except Exception:
+                # If conversion fails, leave as-is; client can use start_at instead.
+                pass
+
+        if payload.get("end_local") and payload.get("end_timezone"):
+            try:
+                self.end_at = _local_to_utc(str(payload["end_local"]), str(payload["end_timezone"]))
+            except Exception:
+                pass
 
         for bool_key in ["is_all_day", "is_cancelled", "is_draft", "is_online_meeting"]:
             if bool_key in payload and payload[bool_key] is not None:
