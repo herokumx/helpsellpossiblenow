@@ -215,6 +215,51 @@
       .listItemMeta { color: var(--muted); font-size: 12px; }
       details { margin-top: 8px; }
 
+      .evtRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .evtMenu {
+        position: relative;
+        display: inline-block;
+        flex: 0 0 auto;
+      }
+      .evtMenuBtn {
+        border: 1px solid var(--border);
+        background: #fff;
+        border-radius: 10px;
+        padding: 6px 8px;
+        font-weight: 900;
+        line-height: 1;
+      }
+      .evtMenuPanel {
+        position: absolute;
+        right: 0;
+        top: calc(100% + 6px);
+        min-width: 160px;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        padding: 6px;
+        display: none;
+        z-index: 50;
+      }
+      .evtMenu.open .evtMenuPanel { display: block; }
+      .evtMenuItem {
+        width: 100%;
+        text-align: left;
+        border: none;
+        background: transparent;
+        padding: 10px 10px;
+        border-radius: 10px;
+        font-weight: 700;
+      }
+      .evtMenuItem:hover { background: #f3f4f6; }
+      .evtMenuItem.danger { color: #b91c1c; }
+
       table { border-collapse: collapse; width: 100%; margin-top: 12px; }
       td, th { border: 1px solid var(--border); padding: 10px; vertical-align: top; }
       th { background: #f3f4f6; text-align: left; font-size: 12px; color: #374151; }
@@ -235,7 +280,7 @@
 
       <div class="grid">
         <div class="card">
-          <h3>Create meeting</h3>
+          <h3 id="formModeTitle">Create meeting</h3>
 
           <div class="field">
             <label class="label" for="title">Title</label>
@@ -319,6 +364,7 @@
 
           <div class="actions">
             <button class="primary" id="createBtn">Create</button>
+            <button type="button" id="cancelEditBtn" style="display:none;">Cancel</button>
           </div>
           <div id="msg" class="msg"></div>
         </div>
@@ -461,6 +507,78 @@
         input.value = "";
       }
 
+      // --- Edit mode helpers ---
+      let editingEventId = null;
+
+      function setFormMode(mode) {
+        const title = document.getElementById("formModeTitle");
+        const btn = document.getElementById("createBtn");
+        const cancel = document.getElementById("cancelEditBtn");
+        if (mode === "edit") {
+          title.textContent = "Edit meeting";
+          btn.textContent = "Save";
+          cancel.style.display = "inline-flex";
+        } else {
+          title.textContent = "Create meeting";
+          btn.textContent = "Create";
+          cancel.style.display = "none";
+        }
+      }
+
+      function clearForm() {
+        document.getElementById("title").value = "";
+        document.getElementById("location").value = "";
+        document.getElementById("description").value = "";
+        guestState.emails = [];
+        renderGuests();
+        setDefaultTimes();
+        // reset timezone to auto-detect
+        document.getElementById("use_my_tz").value = "true";
+        const detected = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+        document.getElementById("timezone").value = detected;
+        document.getElementById("timezone").disabled = true;
+      }
+
+      function loadEventIntoForm(ev) {
+        editingEventId = ev.id;
+        setFormMode("edit");
+        document.getElementById("msg").textContent = "";
+
+        document.getElementById("title").value = ev.title || "";
+        document.getElementById("location").value = ev.location || "";
+        document.getElementById("description").value = ev.description || "";
+
+        // dates/times shown in the user's local timezone (like most calendar UIs)
+        if (ev.start_at) {
+          const s = new Date(ev.start_at);
+          if (!isNaN(s.getTime())) {
+            document.getElementById("start_date").value = `${s.getFullYear()}-${pad2(s.getMonth()+1)}-${pad2(s.getDate())}`;
+            document.getElementById("start_time").value = `${pad2(s.getHours())}:${pad2(s.getMinutes() - (s.getMinutes() % 15))}`;
+          }
+        }
+        if (ev.end_at) {
+          const e = new Date(ev.end_at);
+          if (!isNaN(e.getTime())) {
+            document.getElementById("end_date").value = `${e.getFullYear()}-${pad2(e.getMonth()+1)}-${pad2(e.getDate())}`;
+            document.getElementById("end_time").value = `${pad2(e.getHours())}:${pad2(e.getMinutes() - (e.getMinutes() % 15))}`;
+          }
+        }
+
+        // guests
+        guestState.emails = (ev.attendees || [])
+          .map(a => (a && a.email ? String(a.email).toLowerCase() : null))
+          .filter(Boolean);
+        renderGuests();
+
+        // timezone UI preference (best-effort)
+        const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+        const tz = ev.start_timezone || detectedTz;
+        document.getElementById("timezone").value = tz || "";
+        const useMy = tz && detectedTz && tz === detectedTz;
+        document.getElementById("use_my_tz").value = useMy ? "true" : "false";
+        document.getElementById("timezone").disabled = useMy;
+      }
+
       // --- Modal popup ---
       let modalTimer = null;
       function hideModal() {
@@ -488,6 +606,24 @@
         renderCalendar();
       }
 
+      async function deleteEventById(eventId) {
+        if (!eventId) return;
+        const ok = window.confirm("Delete this event? This cannot be undone.");
+        if (!ok) return;
+        const res = await fetch(`/api/events/${encodeURIComponent(eventId)}`, { method: "DELETE" });
+        if (!res.ok && res.status !== 204) {
+          showModal("Delete failed", await res.text(), 5000);
+          return;
+        }
+        if (editingEventId === eventId) {
+          editingEventId = null;
+          setFormMode("create");
+          clearForm();
+        }
+        showModal("Meeting deleted", "The meeting was deleted.", 3000);
+        await refresh();
+      }
+
       async function create() {
         const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
         const useMyTz = document.getElementById("use_my_tz").value === "true";
@@ -511,23 +647,32 @@
           attendees: guestState.emails.length ? guestState.emails.map(email => ({ email, type: "required" })) : null,
           description: document.getElementById("description").value || null,
         };
-        const res = await fetch("/api/events", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        const isEdit = !!editingEventId;
+        const url = isEdit ? `/api/events/${encodeURIComponent(editingEventId)}` : "/api/events";
+        const method = isEdit ? "PATCH" : "POST";
+        const res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         const msg = document.getElementById("msg");
         if (!res.ok) {
           msg.textContent = "Create failed: " + (await res.text());
           return;
         }
-        msg.textContent = "Created.";
-        showModal("Meeting created", "Your meeting has been saved and is visible to both teams.", 5000);
+        msg.textContent = isEdit ? "Saved." : "Created.";
+        showModal(isEdit ? "Meeting saved" : "Meeting created", "Your meeting has been saved and is visible to both teams.", 5000);
+        if (isEdit) {
+          editingEventId = null;
+          setFormMode("create");
+          clearForm();
+        }
         await refresh();
       }
 
       document.getElementById("createBtn").addEventListener("click", create);
       document.getElementById("refreshBtn").addEventListener("click", refresh);
+      document.getElementById("cancelEditBtn").addEventListener("click", () => {
+        editingEventId = null;
+        setFormMode("create");
+        clearForm();
+      });
       populateTimeSelect(document.getElementById("start_time"));
       populateTimeSelect(document.getElementById("end_time"));
       setDefaultTimes();
@@ -685,7 +830,12 @@
             const s = eventStartDate(ev);
             const t = s ? dtfTime.format(s) : "";
             const label = `${t} ${ev.title || "(untitled)"}`.trim();
-            return `<span class="eventPill" title="${esc(label)}">${esc(label)}</span>`;
+            return `
+              <div class="eventPill" style="display:flex; align-items:center; justify-content:space-between; gap:8px;" title="${esc(label)}">
+                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(label)}</span>
+                ${renderEventMenuHtml(ev.id)}
+              </div>
+            `;
           }).join("");
           const more = evs.length > 3 ? `<div class="listItemMeta">+${evs.length - 3} more</div>` : "";
           cells.push(
@@ -741,8 +891,13 @@
         return `
           <div class="listItem">
             <div class="listItemTop">
-              <div class="listItemTitle">${esc(ev.title || "(untitled)")}</div>
-              <div class="listItemMeta">${esc(when)}</div>
+              <div class="evtRow" style="width:100%;">
+                <div>
+                  <div class="listItemTitle">${esc(ev.title || "(untitled)")}</div>
+                  <div class="listItemMeta">${esc(when)}</div>
+                </div>
+                ${renderEventMenuHtml(ev.id)}
+              </div>
             </div>
             <div class="listItemMeta">${esc((ev.description || "").slice(0, 140))}${esc(loc)}</div>
             <details>
@@ -751,6 +906,26 @@
             </details>
           </div>
         `;
+      }
+
+      function renderEventMenuHtml(eventId) {
+        return `
+          <div class="evtMenu" data-menu-for="${esc(eventId)}">
+            <button type="button" class="evtMenuBtn" data-menu-btn="${esc(eventId)}" aria-label="Event actions">⋮</button>
+            <div class="evtMenuPanel" data-menu-panel="${esc(eventId)}">
+              <button type="button" class="evtMenuItem" data-action="edit" data-id="${esc(eventId)}">Edit event</button>
+              <button type="button" class="evtMenuItem danger" data-action="delete" data-id="${esc(eventId)}">Delete event</button>
+            </div>
+          </div>
+        `;
+      }
+
+      function closeAllMenus() {
+        document.querySelectorAll(".evtMenu.open").forEach(m => m.classList.remove("open"));
+      }
+
+      function findEventById(id) {
+        return calendarState.events.find(e => e.id === id);
       }
 
       // calendar controls
@@ -770,6 +945,38 @@
         if (calendarState.view === "month") setCursor(new Date(c.getFullYear(), c.getMonth() + 1, 1));
         else setCursor(addDays(c, 1));
       });
+
+      // event menus (delegated)
+      document.getElementById("calendarRoot").addEventListener("click", async (e) => {
+        const btn = e.target.closest("[data-menu-btn]");
+        if (btn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const id = btn.dataset.menuBtn;
+          const menu = btn.closest(".evtMenu");
+          const isOpen = menu.classList.contains("open");
+          closeAllMenus();
+          if (!isOpen) menu.classList.add("open");
+          return;
+        }
+
+        const actionBtn = e.target.closest("button[data-action]");
+        if (actionBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const action = actionBtn.dataset.action;
+          const id = actionBtn.dataset.id;
+          closeAllMenus();
+          if (action === "edit") {
+            const ev = findEventById(id);
+            if (ev) loadEventIntoForm(ev);
+          } else if (action === "delete") {
+            await deleteEventById(id);
+          }
+        }
+      });
+
+      document.addEventListener("click", () => closeAllMenus());
 
       refresh();
     </script>
