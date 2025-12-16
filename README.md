@@ -79,5 +79,6 @@ git push heroku main
 - `GET /calendar.ics` returns an unauthenticated iCalendar (.ics) feed of events (`text/calendar`)
 - Optional: `GET /calendar.ics?limit=5000`
 - Imported calendar name defaults to **"PossibleNow Events"**
+- Cache-busting URL (helpful for Google Calendar): `GET /calendar/v2.ics` (any slug works)
 
 

@@ -47,6 +47,9 @@ def _fmt_date(d: date) -> str:
 class IcsEvent:
     uid: str
     dtstamp: datetime
+    created: datetime | None
+    last_modified: datetime | None
+    sequence: int | None
     dtstart: datetime | date
     dtend: datetime | date | None
     summary: str | None = None
@@ -83,6 +86,12 @@ def render_calendar_ics(
         lines.append("BEGIN:VEVENT")
         lines.append(f"UID:{_escape_ical_text(e.uid)}")
         lines.append(f"DTSTAMP:{_fmt_dt_utc(e.dtstamp)}")
+        if e.created:
+            lines.append(f"CREATED:{_fmt_dt_utc(e.created)}")
+        if e.last_modified:
+            lines.append(f"LAST-MODIFIED:{_fmt_dt_utc(e.last_modified)}")
+        if e.sequence is not None:
+            lines.append(f"SEQUENCE:{int(e.sequence)}")
 
         if isinstance(e.dtstart, date) and not isinstance(e.dtstart, datetime):
             lines.append(f"DTSTART;VALUE=DATE:{_fmt_date(e.dtstart)}")
@@ -124,7 +133,15 @@ def calendar_event_to_ics_event(row) -> IcsEvent:
     - For all-day events, uses DTSTART/DTEND as VALUE=DATE. DTEND is exclusive.
     """
     uid = row.ical_uid or str(row.id)
-    dtstamp = row.updated_at or row.created_at or datetime.now(UTC)
+    created = row.created_at or datetime.now(UTC)
+    last_modified = row.updated_at or created
+    dtstamp = last_modified
+    # Many clients use SEQUENCE to decide whether to apply updates for a UID.
+    # Use unix epoch seconds derived from last_modified to make it monotonic-ish.
+    try:
+        seq = int(last_modified.replace(tzinfo=UTC).timestamp())
+    except Exception:
+        seq = None
 
     if row.is_all_day and row.start_at:
         start_d = row.start_at.date()
@@ -136,6 +153,9 @@ def calendar_event_to_ics_event(row) -> IcsEvent:
         return IcsEvent(
             uid=uid,
             dtstamp=dtstamp,
+            created=created,
+            last_modified=last_modified,
+            sequence=seq,
             dtstart=start_d,
             dtend=end_d,
             summary=row.title,
@@ -150,6 +170,9 @@ def calendar_event_to_ics_event(row) -> IcsEvent:
     return IcsEvent(
         uid=uid,
         dtstamp=dtstamp,
+        created=created,
+        last_modified=last_modified,
+        sequence=seq,
         dtstart=row.start_at or dtstamp,
         dtend=row.end_at,
         summary=row.title,
