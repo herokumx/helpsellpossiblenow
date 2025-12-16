@@ -52,7 +52,14 @@ def create_app() -> Flask:
                 ics,
                 status=200,
                 content_type="text/calendar; charset=utf-8",
-                headers={"Cache-Control": "public, max-age=60"},
+                # Some calendar clients cache/poll slowly; these headers encourage revalidation.
+                headers={
+                    "Cache-Control": "public, max-age=0, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                    # Helps some clients keep a friendly name when doing one-time "import file" flows.
+                    "Content-Disposition": 'inline; filename="PossibleNow Events.ics"',
+                },
             )
 
     @app.post("/api/events")

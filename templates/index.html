@@ -132,6 +132,89 @@
         font-size: 14px;
       }
 
+      .calHeader {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      .calHeaderLeft { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .calTitle { font-weight: 800; }
+      .seg {
+        display: inline-flex;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        background: #fff;
+      }
+      .seg button {
+        border: none;
+        border-right: 1px solid var(--border);
+        border-radius: 0;
+        padding: 8px 10px;
+        background: transparent;
+        font-weight: 700;
+        color: #374151;
+      }
+      .seg button:last-child { border-right: none; }
+      .seg button.active { background: #eef2ff; color: #1d4ed8; }
+
+      .calGrid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+      }
+      .dow {
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 700;
+        padding: 0 4px;
+      }
+      .dayCell {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #fff;
+        min-height: 96px;
+        padding: 8px;
+        cursor: pointer;
+      }
+      .dayCell.muted { background: #f9fafb; color: #6b7280; }
+      .dayNum { font-size: 12px; font-weight: 800; margin-bottom: 6px; }
+      .eventPill {
+        display: block;
+        font-size: 12px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: #f3f4f6;
+        margin-bottom: 6px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .list {
+        display: grid;
+        gap: 10px;
+      }
+      .listGroupTitle {
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 800;
+        margin-top: 8px;
+      }
+      .listItem {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #fff;
+        padding: 10px;
+      }
+      .listItemTop { display: flex; justify-content: space-between; gap: 10px; }
+      .listItemTitle { font-weight: 800; }
+      .listItemMeta { color: var(--muted); font-size: 12px; }
+      details { margin-top: 8px; }
+
       table { border-collapse: collapse; width: 100%; margin-top: 12px; }
       td, th { border: 1px solid var(--border); padding: 10px; vertical-align: top; }
       th { background: #f3f4f6; text-align: left; font-size: 12px; color: #374151; }
@@ -241,17 +324,23 @@
         </div>
 
         <div class="card">
-          <h3>Events</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Title</th>
-                <th>Details</th>
-              </tr>
-            </thead>
-            <tbody id="eventsBody"></tbody>
-          </table>
+          <div class="calHeader">
+            <div class="calHeaderLeft">
+              <div class="calTitle" id="calTitle">Calendar</div>
+              <div class="seg" id="viewSeg">
+                <button type="button" data-view="month" class="active">Month</button>
+                <button type="button" data-view="day">Day</button>
+                <button type="button" data-view="schedule">Schedule</button>
+                <button type="button" data-view="all">All</button>
+              </div>
+            </div>
+            <div class="calHeaderLeft">
+              <button type="button" id="calPrevBtn">Prev</button>
+              <button type="button" id="calTodayBtn">Today</button>
+              <button type="button" id="calNextBtn">Next</button>
+            </div>
+          </div>
+          <div id="calendarRoot"></div>
         </div>
       </div>
     </div>
@@ -395,16 +484,8 @@
 
       async function refresh() {
         const res = await fetch("/api/events");
-        const events = await res.json();
-        const body = document.getElementById("eventsBody");
-        body.innerHTML = events.map(e => {
-          const when = `${e.start_at || ""} → ${e.end_at || ""}`.trim();
-          return `<tr>
-            <td>${esc(when)}</td>
-            <td>${esc(e.title)}</td>
-            <td><code>${esc(JSON.stringify(e, null, 2))}</code></td>
-          </tr>`;
-        }).join("");
+        calendarState.events = await res.json();
+        renderCalendar();
       }
 
       async function create() {
@@ -491,6 +572,203 @@
       });
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") hideModal();
+      });
+
+      // --- Calendar view (Month / Day / Schedule / All) ---
+      const calendarState = {
+        view: "month",
+        cursor: new Date(),
+        events: [],
+      };
+
+      const dtfDate = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+      const dtfMonth = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
+      const dtfTime = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+
+      function startOfDay(d) {
+        const x = new Date(d);
+        x.setHours(0,0,0,0);
+        return x;
+      }
+      function addDays(d, n) {
+        const x = new Date(d);
+        x.setDate(x.getDate() + n);
+        return x;
+      }
+      function ymd(d) {
+        return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+      }
+
+      function eventStartDate(e) {
+        if (!e.start_at) return null;
+        const d = new Date(e.start_at);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      function eventEndDate(e) {
+        if (!e.end_at) return null;
+        const d = new Date(e.end_at);
+        return isNaN(d.getTime()) ? null : d;
+      }
+
+      function eventsForDay(day) {
+        const dayKey = ymd(day);
+        const list = calendarState.events
+          .map(ev => ({ ev, s: eventStartDate(ev), en: eventEndDate(ev) }))
+          .filter(x => x.s && ymd(x.s) === dayKey)
+          .sort((a,b) => a.s - b.s)
+          .map(x => x.ev);
+        return list;
+      }
+
+      function setView(view) {
+        calendarState.view = view;
+        document.querySelectorAll("#viewSeg button").forEach(b => b.classList.toggle("active", b.dataset.view === view));
+        renderCalendar();
+      }
+
+      function setCursor(dateObj) {
+        calendarState.cursor = new Date(dateObj);
+        renderCalendar();
+      }
+
+      function renderCalendar() {
+        const root = document.getElementById("calendarRoot");
+        const title = document.getElementById("calTitle");
+
+        if (calendarState.view === "month") {
+          const c = calendarState.cursor;
+          title.textContent = dtfMonth.format(c);
+          root.innerHTML = renderMonthHtml(c);
+          // bind day clicks
+          root.querySelectorAll("[data-day]").forEach(el => {
+            el.addEventListener("click", () => {
+              const [y, m, d] = el.dataset.day.split("-").map(Number);
+              setCursor(new Date(y, m - 1, d));
+              setView("day");
+            });
+          });
+          return;
+        }
+
+        if (calendarState.view === "day") {
+          const day = startOfDay(calendarState.cursor);
+          title.textContent = dtfDate.format(day);
+          root.innerHTML = renderDayHtml(day);
+          return;
+        }
+
+        if (calendarState.view === "schedule") {
+          const start = startOfDay(calendarState.cursor);
+          title.textContent = `Schedule (next 14 days)`;
+          root.innerHTML = renderScheduleHtml(start, 14);
+          return;
+        }
+
+        // all
+        title.textContent = "All events";
+        root.innerHTML = renderAllHtml();
+      }
+
+      function renderMonthHtml(cursor) {
+        const year = cursor.getFullYear();
+        const month = cursor.getMonth();
+        const first = new Date(year, month, 1);
+        const start = addDays(first, -first.getDay()); // Sunday-start grid
+        const dow = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+        const cells = [];
+        for (let i = 0; i < 42; i++) {
+          const day = addDays(start, i);
+          const inMonth = day.getMonth() === month;
+          const evs = eventsForDay(day);
+          const pills = evs.slice(0, 3).map(ev => {
+            const s = eventStartDate(ev);
+            const t = s ? dtfTime.format(s) : "";
+            const label = `${t} ${ev.title || "(untitled)"}`.trim();
+            return `<span class="eventPill" title="${esc(label)}">${esc(label)}</span>`;
+          }).join("");
+          const more = evs.length > 3 ? `<div class="listItemMeta">+${evs.length - 3} more</div>` : "";
+          cells.push(
+            `<div class="dayCell ${inMonth ? "" : "muted"}" data-day="${ymd(day)}">
+              <div class="dayNum">${day.getDate()}</div>
+              ${pills}
+              ${more}
+            </div>`
+          );
+        }
+
+        const dowRow = dow.map(d => `<div class="dow">${d}</div>`).join("");
+        return `
+          <div class="calGrid">${dowRow}</div>
+          <div class="calGrid" style="margin-top: 8px;">${cells.join("")}</div>
+        `;
+      }
+
+      function renderDayHtml(day) {
+        const evs = eventsForDay(day);
+        if (!evs.length) {
+          return `<div class="listItemMeta">No events for this day.</div>`;
+        }
+        return `<div class="list">${evs.map(renderEventItem).join("")}</div>`;
+      }
+
+      function renderScheduleHtml(startDay, days) {
+        const groups = [];
+        for (let i = 0; i < days; i++) {
+          const day = addDays(startDay, i);
+          const evs = eventsForDay(day);
+          if (!evs.length) continue;
+          groups.push(`<div class="listGroupTitle">${dtfDate.format(day)}</div>`);
+          groups.push(`<div class="list">${evs.map(renderEventItem).join("")}</div>`);
+        }
+        return groups.length ? groups.join("") : `<div class="listItemMeta">No upcoming events in this range.</div>`;
+      }
+
+      function renderAllHtml() {
+        const items = calendarState.events
+          .map(ev => ({ ev, s: eventStartDate(ev) }))
+          .sort((a,b) => (a.s?.getTime() || 0) - (b.s?.getTime() || 0))
+          .map(x => x.ev);
+        if (!items.length) return `<div class="listItemMeta">No events yet.</div>`;
+        return `<div class="list">${items.map(renderEventItem).join("")}</div>`;
+      }
+
+      function renderEventItem(ev) {
+        const s = eventStartDate(ev);
+        const en = eventEndDate(ev);
+        const when = s ? `${dtfDate.format(s)} ${dtfTime.format(s)}${en ? ` → ${dtfTime.format(en)}` : ""}` : "(no time)";
+        const loc = ev.location ? ` • ${ev.location}` : "";
+        return `
+          <div class="listItem">
+            <div class="listItemTop">
+              <div class="listItemTitle">${esc(ev.title || "(untitled)")}</div>
+              <div class="listItemMeta">${esc(when)}</div>
+            </div>
+            <div class="listItemMeta">${esc((ev.description || "").slice(0, 140))}${esc(loc)}</div>
+            <details>
+              <summary class="listItemMeta">Details</summary>
+              <code>${esc(JSON.stringify(ev, null, 2))}</code>
+            </details>
+          </div>
+        `;
+      }
+
+      // calendar controls
+      document.getElementById("viewSeg").addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-view]");
+        if (!btn) return;
+        setView(btn.dataset.view);
+      });
+      document.getElementById("calTodayBtn").addEventListener("click", () => setCursor(new Date()));
+      document.getElementById("calPrevBtn").addEventListener("click", () => {
+        const c = calendarState.cursor;
+        if (calendarState.view === "month") setCursor(new Date(c.getFullYear(), c.getMonth() - 1, 1));
+        else setCursor(addDays(c, -1));
+      });
+      document.getElementById("calNextBtn").addEventListener("click", () => {
+        const c = calendarState.cursor;
+        if (calendarState.view === "month") setCursor(new Date(c.getFullYear(), c.getMonth() + 1, 1));
+        else setCursor(addDays(c, 1));
       });
 
       refresh();

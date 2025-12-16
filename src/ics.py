@@ -70,8 +70,11 @@ def render_calendar_ics(
         f"PRODID:{prodid}",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
+        # Hint to clients how often to refresh when subscribed to the URL.
+        "X-PUBLISHED-TTL:PT1M",
         # Many clients (Apple Calendar, Google Calendar import, etc.) use X-WR-CALNAME for display name.
         f"X-WR-CALNAME:{_escape_ical_text(calname)}",
+        f"X-WR-CALDESC:{_escape_ical_text('PossibleNow Events')}",
         # RFC 7986 NAME property is supported by some clients as well.
         f"NAME:{_escape_ical_text(calname)}",
     ]
